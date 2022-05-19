@@ -14,7 +14,7 @@ services:
       privileged: true
       volumes:
         - /proc:/host/proc:ro
-        - ./docker/telegraf-v2/telegraf.conf:/etc/telegraf/telegraf.conf
+        - ./docker/telegraf/telegraf.conf:/etc/telegraf/telegraf.conf
         - /var/run/docker.sock:/var/run/docker.sock
 
     influxdb:
