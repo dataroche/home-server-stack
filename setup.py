@@ -7,7 +7,8 @@ setup(
     install_requires=[
         'pydantic',
         'influxdb',
+        'pandas',
         'pytelegraf',
-        'pandas'
+        'python-dotenv'
     ],
 )
