@@ -9,7 +9,6 @@ services:
         - "8092:8092"
       environment:
         HOST_PROC: /host/proc
-        HB_MINER_TOKEN: ${HB_MINER_TOKEN}
         INFLUXDB_TELEGRAF_HOST: ${INFLUXDB_TELEGRAF_HOST}
       privileged: true
       volumes:
