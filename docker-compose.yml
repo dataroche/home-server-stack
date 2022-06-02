@@ -15,6 +15,8 @@ services:
         - /proc:/host/proc:ro
         - ./docker/telegraf/telegraf.conf:/etc/telegraf/telegraf.conf
         - /var/run/docker.sock:/var/run/docker.sock
+      networks:
+        - public
 
     influxdb:
       container_name: influxdb
@@ -29,6 +31,8 @@ services:
       volumes:
         - ./docker/influxdb/influxdb.conf:/etc/influxdb/influxdb.conf
         - influxdb-data:/var/lib/influxdb
+      networks:
+        - public
         
     grafana:
       container_name: grafana
@@ -45,8 +49,14 @@ services:
         - ./docker/grafana/dashboard.yaml:/etc/grafana/provisioning/dashboards/dashboard.yaml
         - ./docker/grafana/DashboardTelegraf.json:/var/lib/grafana/dashboards/DashboardTelegraf.json
         - grafana-data:/var/lib/grafana
+      networks:
+        - public
 
 
 volumes:
     influxdb-data:
     grafana-data:
+
+networks:
+    public:
+        name: public
