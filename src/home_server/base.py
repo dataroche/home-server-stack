@@ -1,7 +1,7 @@
 import logging
 import pandas as pd
 from typing import Optional, Set, Type, Generic, TypeVar
-import collections
+from collections.abc import MutableMapping
 
 from pydantic import BaseModel
 from telegraf.client import ClientBase as WriteClientBase
@@ -20,11 +20,22 @@ class OutputModel(BaseModel):
     @classmethod
     def io(
         cls: Type["OM"],
-        write_client: Optional[WriteClientBase] = None,
-        read_client: Optional[DataFrameClient] = None,
         **kwargs,
     ) -> "ModelIO[OM]":
         settings = Settings()
+        if settings.io_mode == "influx":
+            return cls.influx_io(settings, **kwargs)
+        else:
+            raise NotImplementedError(f"Mode {settings.io_mode}")
+
+    @classmethod
+    def influx_io(
+        cls: Type["OM"],
+        settings: Settings,
+        write_client: Optional[WriteClientBase] = None,
+        read_client: Optional[DataFrameClient] = None,
+        **kwargs,
+    ):
 
         if write_client is None:
             write_client = settings.telegraf_client_factory()
@@ -58,7 +69,36 @@ M = TypeVar("M", bound=BaseModel)
 OM = TypeVar("OM", bound=OutputModel)
 
 
-class ModelIO(Generic[M]):
+class BaseModelIO(Generic[M]):
+    def __init__(
+        self,
+        metric_name: str,
+        schema: Type[M],
+        timestamp_mult_to_ns: int = 1000000,
+    ):
+        self.metric_name = metric_name
+
+        self.tags: Set[str] = set()
+        self.timestamp_field = ""
+        self.timestamp_mult = timestamp_mult_to_ns
+
+        self.schema = schema
+        self._init_schema(schema)
+
+    def _init_schema(self, schema: Type[M], prefix: str = ""):
+
+        self.tags = set()
+        for f_name, field in schema.__fields__.items():
+            f_name = prefix + f_name
+            extra = field.field_info.extra
+            if extra.get("telegraf_tag"):
+                self.tags.add(f_name)
+
+            if extra.get("telegraf_timestamp"):
+                self.timestamp_field = f_name
+
+
+class ModelIO(BaseModelIO):
     def __init__(
         self,
         client: WriteClientBase,
@@ -69,14 +109,11 @@ class ModelIO(Generic[M]):
     ):
         self.client = client
         self.influxdb_client = influxdb_client
-        self.metric_name = metric_name
-
-        self.tags: Set[str] = set()
-        self.timestamp_field = ""
-        self.timestamp_mult = timestamp_mult_to_ns
-
-        self.schema = schema
-        self._init_schema(schema)
+        super().__init__(
+            metric_name=metric_name,
+            schema=schema,
+            timestamp_mult_to_ns=timestamp_mult_to_ns,
+        )
 
     def _init_schema(self, schema: Type[M], prefix: str = ""):
 
@@ -183,7 +220,7 @@ def flatten(d, parent_key="", sep="_"):
     items = []
     for k, v in d.items():
         new_key = parent_key + sep + k if parent_key else k
-        if isinstance(v, collections.MutableMapping):
+        if isinstance(v, MutableMapping):
             items.extend(flatten(v, new_key, sep=sep).items())
         else:
             items.append((new_key, v))

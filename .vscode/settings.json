@@ -1,0 +1,16 @@
+{
+    "sqltools.connections": [
+        {
+            "name": "EDS",
+            "driver": "SQLite",
+            "database": "./database.db",
+            "connectionTimeout": 15
+        },
+        {
+            "previewLimit": 50,
+            "driver": "SQLite",
+            "name": "Test DB",
+            "database": "./test.db"
+        }
+    ]
+}

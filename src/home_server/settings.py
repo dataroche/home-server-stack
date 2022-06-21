@@ -6,6 +6,8 @@ from influxdb import DataFrameClient as InfluxDbDataFrameClient
 
 
 class Settings(BaseSettings):
+    io_mode: Literal["influx", "postgres"] = "influx"
+
     telegraf_host: str = "127.0.0.1"
     telegraf_port: int = 8092
     telegraf_protocol: Literal["udp", "http"] = "http"
