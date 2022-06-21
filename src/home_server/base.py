@@ -1,4 +1,6 @@
 import logging
+import datetime
+import time
 import pandas as pd
 from typing import Optional, Set, Type, Generic, TypeVar
 from collections.abc import MutableMapping
@@ -174,17 +176,33 @@ class ModelIO(BaseModelIO):
         models = [self.from_df_row(timestamp, row) for timestamp, row in df.iterrows()]
         return models
 
-    def get_timeseries(self, limit: int = 10000, **where):
+    def get_timeseries(
+        self,
+        limit: Optional[int] = 10000,
+        last_x_seconds: Optional[int] = None,
+        after_dt: Optional[datetime.datetime] = None,
+        before_dt: Optional[datetime.datetime] = None,
+        **where,
+    ):
         if not self.influxdb_client:
             raise ValueError("Requires influxdb client")
 
-        where_str = (
-            " AND ".join(f"\"{key}\"='{value}'" for key, value in where.items())
-            if where
-            else "1=1"
-        )
-        query = f'SELECT *{self.tags_str_query} FROM "{self.metric_name}" WHERE {where_str} ORDER BY DESC LIMIT {limit}'
-        result = self.influxdb_client.query(query)
+        where_clauses = [f"\"{key}\"='{value}'" for key, value in where.items()]
+
+        if last_x_seconds:
+            after_dt = datetime.datetime.fromtimestamp(time.time() - last_x_seconds)
+
+        if after_dt:
+            where_clauses = where_clauses + [f"time >= '{after_dt}'"]
+
+        if before_dt:
+            where_clauses = where_clauses + [f"time < '{before_dt}'"]
+
+        where_str = " AND ".join(where_clauses) if where_clauses else "1=1"
+
+        limit_str = f"LIMIT {limit}" if limit else ""
+        query = f'SELECT *{self.tags_str_query} FROM "{self.metric_name}" WHERE {where_str} ORDER BY DESC {limit_str}'
+        result = self.influxdb_client.query(query, chunked=True, chunk_size=10000)
         df = _parse_influx_df(result)
         df.sort_index(inplace=True)
         df = df[~df.index.duplicated(keep="first")]
