@@ -5,7 +5,7 @@ from sqlalchemy import create_engine
 
 from pydantic import Field
 from home_server import OutputModel
-from home_server.postgres_io import PostgresModelIO
+from home_server.sql_io import SqlModelIO
 
 
 class MyModel(OutputModel):
@@ -26,5 +26,6 @@ def engine():
 
 def test_table_creation(engine):
 
-    output = PostgresModelIO(engine=engine, metric_name="test_model", schema=MyModel)
+    output = SqlModelIO(engine=engine, metric_name="test_model", schema=MyModel)
+    output.metric(MyModel(category="x", value=2.0))
     print(output)

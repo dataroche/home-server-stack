@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from telegraf.client import ClientBase as WriteClientBase
 from influxdb import DataFrameClient
 from influxdb.resultset import ResultSet
+from google.cloud import bigquery
 
 from .settings import Settings
 
@@ -16,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 class OutputModel(BaseModel):
+    __slots__ = ["__weakref__"]
     __metric_name__ = ""
     __timestamp_mult_to_ns__ = 0
 
@@ -63,6 +65,7 @@ class OutputModel(BaseModel):
             metric_name=metric_name,
             schema=cls,
             influxdb_client=read_client,
+            replicate_to_bigquery_dataset=settings.hs_replicate_to_bigquery_dataset,
             **kwargs,
         )
 
@@ -73,10 +76,7 @@ OM = TypeVar("OM", bound=OutputModel)
 
 class BaseModelIO(Generic[M]):
     def __init__(
-        self,
-        metric_name: str,
-        schema: Type[M],
-        timestamp_mult_to_ns: int = 1000000,
+        self, metric_name: str, schema: Type[M], timestamp_mult_to_ns: int = 1000000
     ):
         self.metric_name = metric_name
 
@@ -100,7 +100,7 @@ class BaseModelIO(Generic[M]):
                 self.timestamp_field = f_name
 
 
-class ModelIO(BaseModelIO):
+class ModelIO(BaseModelIO[M]):
     def __init__(
         self,
         client: WriteClientBase,
@@ -108,9 +108,13 @@ class ModelIO(BaseModelIO):
         schema: Type[M],
         timestamp_mult_to_ns: int = 1000000,
         influxdb_client: DataFrameClient = None,
+        replicate_to_bigquery_dataset: str = "",
     ):
         self.client = client
         self.influxdb_client = influxdb_client
+        self.replicate_to_bigquery_dataset = replicate_to_bigquery_dataset
+        self._in_batch = False
+        self.batch: list[M] = []
         super().__init__(
             metric_name=metric_name,
             schema=schema,
@@ -129,22 +133,49 @@ class ModelIO(BaseModelIO):
             if extra.get("telegraf_timestamp"):
                 self.timestamp_field = f_name
 
+    def __enter__(self):
+        self._in_batch = True
+
+    def __exit__(self, *args):
+        self._flush_batch()
+        self._in_batch = False
+
     def metric(self, model: M):
-        data = flatten(model.dict(exclude_unset=True, exclude_defaults=True))
+        self.batch.append(model)
 
-        def pop_data(key):
-            return data.pop(key) if key in data else getattr(model, key)
+        if not self._in_batch:
+            self._flush_batch()
 
-        tags = {t: pop_data(t) for t in self.tags}
-        timestamp = (
-            self.timestamp_mult * pop_data(self.timestamp_field)
-            if self.timestamp_field
-            else None
-        )
+    def _flush_batch(self):
 
-        self.client.metric(
-            self.metric_name, values=data, tags=tags, timestamp=timestamp
-        )
+        all_data = []
+        for model in self.batch:
+            data = flatten(model.dict(exclude_unset=True, exclude_defaults=True))
+
+            def pop_data(key):
+                return data.pop(key) if key in data else getattr(model, key)
+
+            tags = {t: pop_data(t) for t in self.tags}
+            timestamp = (
+                self.timestamp_mult * pop_data(self.timestamp_field)
+                if self.timestamp_field
+                else None
+            )
+            self.client.metric(
+                self.metric_name, values=data, tags=tags, timestamp=timestamp
+            )
+            all_data.append({**tags, **data})
+
+        if self.replicate_to_bigquery_dataset:
+            bq = bigquery.Client()
+            table_name = self.replicate_to_bigquery_dataset + "." + self.metric_name
+            errors = bq.insert_rows_json(table_name, all_data)
+            if errors:
+                logger.warning(
+                    f"BigQuery encountered errors while inserting rows: {errors}"
+                )
+
+        self.batch = []
 
     @property
     def tags_str_query(self):

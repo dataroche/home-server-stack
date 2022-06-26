@@ -10,5 +10,6 @@ setup(
         "pandas",
         "pytelegraf[http]",
         "python-dotenv",
+        "google-cloud-bigquery"
     ],
 )

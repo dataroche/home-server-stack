@@ -33,6 +33,22 @@ services:
         - influxdb-data:/var/lib/influxdb
       networks:
         - public
+
+    postgres:
+      container_name: postgres
+      restart: unless-stopped
+      image: timescale/timescaledb-ha:pg14-latest
+      ports:
+        - "5432:5432"
+      environment:
+        POSTGRES_USER: ${POSTGRES_USER}
+        POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      volumes:
+        - ./docker/postgres/initdb.d:/docker-entrypoint-initdb.d
+        - postgresql-data:/var/lib/postgresql/data
+      networks:
+        - public
+
         
     grafana:
       container_name: grafana
@@ -55,6 +71,7 @@ services:
 
 volumes:
     influxdb-data:
+    postgresql-data:
     grafana-data:
 
 networks:
