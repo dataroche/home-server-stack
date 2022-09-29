@@ -4,11 +4,16 @@ services:
     telegraf:
       container_name: telegraf
       restart: unless-stopped
-      image: telegraf:1.20.3
+      image: telegraf:1.24.1
       ports:
         - "8092:8092"
       environment:
         HOST_PROC: /host/proc
+        PGHOST: postgres
+        PGPORT: 5432
+        PGUSER: telegraf
+        PGPASSWORD: ${POSTGRES_TELEGRAF_USER_PASSWORD}
+        PGDATABASE: metrics
         INFLUXDB_TELEGRAF_HOST: ${INFLUXDB_TELEGRAF_HOST}
       privileged: true
       volumes:
@@ -17,22 +22,8 @@ services:
         - /var/run/docker.sock:/var/run/docker.sock
       networks:
         - public
-
-    influxdb:
-      container_name: influxdb
-      restart: unless-stopped
-      image: influxdb:1.8
-      ports:
-        - "8086:8086"
-      environment:
-        INFLUXDB_USER: ${INFLUXDB_USERNAME}
-        INFLUXDB_USER_PASSWORD: ${INFLUXDB_PASSWORD}
-        INFLUXDB_DB: ${INFLUXDB_DATABASE}
-      volumes:
-        - ./docker/influxdb/influxdb.conf:/etc/influxdb/influxdb.conf
-        - influxdb-data:/var/lib/influxdb
-      networks:
-        - public
+      depends_on:
+        - postgres
 
     postgres:
       container_name: postgres
@@ -70,7 +61,6 @@ services:
 
 
 volumes:
-    influxdb-data:
     postgresql-data:
     grafana-data:
 
